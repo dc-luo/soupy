@@ -26,6 +26,8 @@ from .controlModelHessian import ControlModelHessian
 from ..collectives import NullCollective, MultipleSamePartitioningPDEsCollective, \
         MultipleSerialPDEsCollective, allocate_process_sample_sizes
 
+from ..sampling import GaussianPriorSampler
+
 
 def meanVarRiskMeasureSAASettings(data = {}):
     data['sample_size'] = [100,'Number of Monte Carlo samples']
@@ -90,9 +92,7 @@ class MeanVarRiskMeasureSAA(RiskMeasure):
         self.qg_bar = self.model.generate_vector(CONTROL)
 
         # For sampling
-        self.noise = dl.Vector(self.model.problem.Vh[STATE].mesh().mpi_comm()) # use the mesh mpi comm 
-        self.prior.init_vector(self.noise, "noise")
-        rng = Random(seed=self.settings['seed'])
+        self.parameter_sampler = GaussianPriorSampler(prior, self.settings['seed'])
 
         # Generate samples for m 
         self.x_mc = [] 
@@ -105,7 +105,7 @@ class MeanVarRiskMeasureSAA(RiskMeasure):
         # Burn in for parallel sampling  
         n_burn = int(np.sum(self.sample_size_allprocs[:self.comm_sampler.rank]))
         for i in range(n_burn):
-            rng.normal(1.0, self.noise)
+            self.parameter_sampler.burn()
         
         # Actual sampling 
         for i in range(self.sample_size_proc):
@@ -113,8 +113,7 @@ class MeanVarRiskMeasureSAA(RiskMeasure):
             mi = self.model.generate_vector(PARAMETER)
             pi = self.model.generate_vector(ADJOINT) 
             x = [ui, mi, pi, self.z]
-            rng.normal(1.0, self.noise)
-            self.prior.sample(self.noise, mi)
+            self.parameter_sampler.sample(mi)
             self.x_mc.append(x)
 
             g = self.model.generate_vector(CONTROL)

@@ -28,6 +28,8 @@ from ..collectives import NullCollective, MultipleSamePartitioningPDEsCollective
 from .smoothPlusApproximation import SmoothPlusApproximationQuartic, SmoothPlusApproximationSoftplus
 from .augmentedVector import AugmentedVector
 
+from ..sampling import GaussianPriorSampler
+
 
 
 def sample_superquantile(samples, beta):
@@ -113,9 +115,7 @@ class SuperquantileRiskMeasureSAA(RiskMeasure):
         self.sprime_g_bar = self.model.generate_vector(CONTROL)
 
         # For sampling
-        self.noise = dl.Vector(self.model.problem.Vh[STATE].mesh().mpi_comm()) # use the mesh mpi comm 
-        self.prior.init_vector(self.noise, "noise")
-        rng = Random(seed=self.settings['seed'])
+        self.parameter_sampler = GaussianPriorSampler(self.prior, self.settings['seed'])
 
         # Generate samples for m 
         self.x_mc = [] 
@@ -130,7 +130,7 @@ class SuperquantileRiskMeasureSAA(RiskMeasure):
         # Burn in for parallel sampling  
         n_burn = int(np.sum(self.sample_size_allprocs[:self.comm_sampler.rank]))
         for i in range(n_burn):
-            rng.normal(1.0, self.noise)
+            self.parameter_sampler.burn()
         
         # Actual sampling 
         for i in range(self.sample_size_proc):
@@ -138,8 +138,7 @@ class SuperquantileRiskMeasureSAA(RiskMeasure):
             mi = self.model.generate_vector(PARAMETER)
             pi = self.model.generate_vector(ADJOINT) 
             x = [ui, mi, pi, self.z]
-            rng.normal(1.0, self.noise)
-            self.prior.sample(self.noise, mi)
+            self.parameter_sampler.sample(mi)
             self.x_mc.append(x)
             
             g = self.model.generate_vector(CONTROL)
