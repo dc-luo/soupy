@@ -26,6 +26,11 @@ class ParameterSampler(ABC):
         Consumes the internal random state to burn one sample 
         """
 
+    @abstractmethod
+    def generate_vector(self):
+        """
+        Generate a vector matching the space of the samples
+        """
 
 
 
@@ -59,7 +64,6 @@ class GaussianPriorSampler:
         """
         Sample and save to vector :code:`m`
         """
-
         self.rng.normal(1.0, self.noise)
         self.prior.sample(self.noise, m)
 
@@ -68,7 +72,19 @@ class GaussianPriorSampler:
         Burn a sample from the rng 
         """
         self.rng.normal(1.0, self.noise)
+    
+    def set_seed(self, seed):
+        """
+        Set the seed of the internal random state 
+        """
+        self.seed = seed 
+        self.rng = hp.Random(seed = seed)
 
+    def generate_vector(self):
+        """
+        Generate a vector matching the space of the samples
+        """
+        return dl.Function(self.Vh).vector()
 
 
 
@@ -78,9 +94,22 @@ class NumpyArrayOnDiskSampler:
     Loads samples from disk. This is useful for 
     the cases where the parameter distribution is given 
     only in terms of samples (e.g. Bayesian calibration process)
+
+    It is assumed that the data is stored as individual numpy arrays 
+    in the form :code:`{data_directory}/{sample_name}_{index}.npy`
+
+    :param Vh: Function space for the parameter 
+    :type Vh: dl.FunctionSpace
+
+    :param data_directory: Directory where data is stored. 
+    :type data_directory: str
+
+    :param sample_name: Label for the sample 
+    :type sample_name: str
     """
     def __init__(self, Vh, data_directory, sample_name='sample'):
         self.Vh = Vh 
+        assert self.Vh.mpi_comm().Get_size() == 1, "NumpyArrayOnDiskSampler only supports serial meshes"
         self.data_directory = data_directory 
         self.sample_name = sample_name
         self._sample_index = 0 
@@ -101,7 +130,17 @@ class NumpyArrayOnDiskSampler:
         """
         self._sample_index += 1 
 
+    
+    def set_seed(self, seed):
+        """
+        Sets the seed (sample index) to start the draw from 
+        """
+        self._sample_index = seed
 
+        """
+        Generate a vector matching the space of the samples
+        """
+        return dl.Function(self.Vh).vector()
 
 
 
